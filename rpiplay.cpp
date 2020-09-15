@@ -46,11 +46,11 @@
 
 int start_server(std::vector<char> hw_addr, std::string name, background_mode_t background_mode,
                  audio_device_t audio_device, bool low_latency, bool debug_log, int rotation,
-                 flip_mode_t flip);
+                 flip_mode_t flip, int display_num);
 
 int stop_server();
 
-typedef video_renderer_t *(*video_init_func_t)(logger_t *logger, background_mode_t background_mode, bool low_latency, int rotation, flip_mode_t flip);
+typedef video_renderer_t *(*video_init_func_t)(logger_t *logger, background_mode_t background_mode, bool low_latency, int rotation, flip_mode_t flip, int display_num);
 typedef audio_renderer_t *(*audio_init_func_t)(logger_t *logger, video_renderer_t *video_renderer, audio_device_t device, bool low_latency);
 
 typedef struct video_renderer_list_entry_s {
@@ -165,6 +165,7 @@ void print_info(char *name) {
     printf("-f (horiz|vert|both)  Specify image flipping (horiz = horizontal, vert = vertical, both = both)\n");
     printf("-l                    Enable low-latency mode (disables render clock)\n");
     printf("-a (hdmi|analog|off)  Set audio output device\n");
+    printf("-o (dispmanx #)       Set output display to the dispmanx display number. On Pi4, 2 and 7 are HDMI0 and 1.");
     printf("-vr renderer          Set video renderer to use. Available renderers:\n");
     for (int i = 0; i < sizeof(video_renderers)/sizeof(video_renderers[0]); i++) {
         printf("    %s: %s%s\n", video_renderers[i].name, video_renderers[i].description, i == 0 ? " [Default]" : "");
@@ -188,6 +189,7 @@ int main(int argc, char *argv[]) {
     int rotation = DEFAULT_ROTATE;
     flip_mode_t flip = DEFAULT_FLIP;
     bool debug_log = DEFAULT_DEBUG_LOG;
+    int display_num = 0;    
     // Default to the best available renderer
     video_init_func = video_renderers[0].init_func;
     audio_init_func = audio_renderers[0].init_func;
@@ -209,6 +211,8 @@ int main(int argc, char *argv[]) {
             background = background_mode == "off" ? BACKGROUND_MODE_OFF :
                          background_mode == "auto" ? BACKGROUND_MODE_AUTO :
                          BACKGROUND_MODE_ON;
+        } else if (arg == "-o") {
+	        display_num = atoi(argv[++i]);
         } else if (arg == "-a") {
             if (i == argc - 1) continue;
             std::string audio_device_name(argv[++i]);
@@ -260,7 +264,7 @@ int main(int argc, char *argv[]) {
         parse_hw_addr(mac_address, server_hw_addr);
     }
 
-    if (start_server(server_hw_addr, server_name, background, audio_device, low_latency, debug_log, rotation, flip) != 0) {
+    if (start_server(server_hw_addr, server_name, background, audio_device, low_latency, debug_log, rotation, flip, display_num) != 0) {
         return 1;
     }
 
@@ -334,7 +338,7 @@ extern "C" void log_callback(void *cls, int level, const char *msg) {
 
 int start_server(std::vector<char> hw_addr, std::string name, background_mode_t background_mode,
                  audio_device_t audio_device, bool low_latency, bool debug_log, int rotation,
-                 flip_mode_t flip) {
+                 flip_mode_t flip, int display_num) {
     raop_callbacks_t raop_cbs;
     memset(&raop_cbs, 0, sizeof(raop_cbs));
     raop_cbs.conn_init = conn_init;
@@ -360,7 +364,7 @@ int start_server(std::vector<char> hw_addr, std::string name, background_mode_t 
 
     if (low_latency) logger_log(render_logger, LOGGER_INFO, "Using low-latency mode");
 
-    if ((video_renderer = video_init_func(render_logger, background_mode, low_latency, rotation, flip)) == NULL) {
+    if ((video_renderer = video_init_func(render_logger, background_mode, low_latency, rotation, flip, display_num)) == NULL) {
         LOGE("Could not init video renderer");
         return -1;
     }
